@@ -125,7 +125,7 @@ export function importTabs(
   return usable.length;
 }
 
-export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceName: string): { tabs: number; bookmarks: number } {
+export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceName: string, browserName: string): { tabs: number; bookmarks: number } {
   const links = space.pinned.filter((n) => n.type === "url" && n.url);
   const folders = space.pinned.filter((n) => n.type === "folder");
   let tabs = importTabs(
@@ -143,7 +143,7 @@ export function importArcSpace(profileId: string, space: SpaceSuggestion, spaceN
   if (folders.length) {
     const roots = useBrowser.getState().bookmarks.roots[profileId];
     if (roots) {
-      useBrowser.getState().addBookmarkTree(profileId, [{ title: `${spaceName} (Arc)`, children: folders.map(toDraft) }], roots.bar);
+      useBrowser.getState().addBookmarkTree(profileId, [{ title: `${spaceName} (${browserName})`, children: folders.map(toDraft) }], roots.bar);
       bookmarks = linkCount(folders);
     }
   }

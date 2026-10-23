@@ -133,7 +133,7 @@ export function ImportWindow() {
   };
 
   const allSpaces: (SpaceSummary & { profileId: string })[] = (source?.profiles ?? []).flatMap((p) => (p.spaces ?? []).map((s) => ({ ...s, profileId: p.id })));
-  const isArc = source?.family === "arc";
+  const hasSpaces = allSpaces.length > 0;
   const isDiaTabs = source?.family === "automation";
 
   const next = () => {
@@ -148,7 +148,7 @@ export function ImportWindow() {
     if (step === "choose") {
       if (source.needsFullDiskAccess) return setStep("access");
       if (source.requiresExport) return setStep("safari");
-      if (source.profiles.length > 1 || (isArc && allSpaces.length > 1)) return setStep("profiles");
+      if (source.profiles.length > 1 || (hasSpaces && allSpaces.length > 1)) return setStep("profiles");
     }
     if ((step === "choose" || step === "profiles") && ENCRYPTED.some((k) => kinds.has(k)) && source.needsKeychain && api && !api.isBrowserUnlocked(source.id)) {
       return setStep("unlock");
@@ -188,12 +188,12 @@ export function ImportWindow() {
 
   const run = async (wanted: Set<ImportKind>) => {
     if (!api || !source) return;
-    const selected = source.profiles.filter((p) => sourceProfiles.includes(p.id) || (isArc && p.spaces?.some((s) => spaces.includes(s.id))));
+    const selected = source.profiles.filter((p) => (p.spaces?.length ? p.spaces.some((s) => spaces.includes(s.id)) : sourceProfiles.includes(p.id)));
     const requested: ImportKind[] = [...wanted];
-    if (isArc && requested.includes("tabs")) requested.push("spaces", "pinnedTabs");
+    if (hasSpaces && requested.includes("tabs")) requested.push("spaces", "pinnedTabs");
     const order = KINDS.map((k) => k.kind).filter((k) => requested.includes(k));
     setStatus(Object.fromEntries(order.map((k) => [k, "pending"])));
-    setPreparing(isArc ? Math.max(1, spaces.length) : selected.length);
+    setPreparing(hasSpaces ? Math.max(1, spaces.length) : selected.length);
     setStep("progress");
     abort.current = new AbortController();
     const total = emptyCounts();
@@ -211,7 +211,7 @@ export function ImportWindow() {
       let result: ImportResult;
       try {
         result = await api.importData(source.id, profile.id, order, {
-          spaceIds: isArc ? spaces : undefined,
+          spaceIds: hasSpaces ? spaces : undefined,
           signal: abort.current.signal,
           onProgress: (p) => {
             if (p.phase === "start") setStatus((st) => ({ ...st, [p.kind]: "active" }));
@@ -232,14 +232,14 @@ export function ImportWindow() {
         if (!names.includes(profile.name)) failed.set(k, [...names, profile.name]);
       };
 
-      if (isArc) {
+      if (hasSpaces) {
         const profileSpaces = result.spaces;
         let first: string | null = null;
         for (const space of profileSpaces) {
           const name = space.name || "Space";
           const dest = await destination(destinationIndex++, name, space.color, space.emoji);
           first ??= dest;
-          const r = importArcSpace(dest, space, name);
+          const r = importArcSpace(dest, space, name, source.name);
           add({ ...emptyCounts(), tabs: r.tabs, bookmarks: r.bookmarks });
         }
         const dest = first ?? (await destination(destinationIndex++, result.profile?.name ?? profile.name, result.profile?.color));
@@ -476,7 +476,7 @@ export function ImportWindow() {
               ).map((k) => (
                 <Checkbox
                   key={k.kind}
-                  label={k.kind === "tabs" && isArc ? "Spaces and tabs" : k.kind === "tabs" && isDiaTabs ? "Open tabs" : k.title}
+                  label={k.kind === "tabs" && hasSpaces ? "Spaces and tabs" : k.kind === "tabs" && isDiaTabs ? "Open tabs" : k.title}
                   value={kinds.has(k.kind)}
                   onChange={(v) =>
                     setKinds((prev) => {
@@ -509,9 +509,9 @@ export function ImportWindow() {
       </>
     );
   } else if (step === "profiles" && source) {
-    body = isArc ? (
+    body = hasSpaces ? (
       <>
-        <Title title="Select spaces to import" subtitle={`We'll import your Arc spaces, tabs, and folders to ${APP}.`} />
+        <Title title="Select spaces to import" subtitle={`We'll import your ${source.name} spaces, tabs, and folders to ${APP}.`} />
         <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 10 }}>{`Customize which spaces to bring over to ${APP}. Each space becomes a profile.`}</Text>
         <View style={{ gap: 6 }}>
           {allSpaces.map((s) => (
@@ -559,7 +559,7 @@ export function ImportWindow() {
         <Button title="Back" onPress={() => setStep("choose")} />
         <View style={{ flex: 1 }} />
         {targetPicker}
-        <Button title="Continue" kind="primary" disabled={isArc ? !spaces.length : !sourceProfiles.length} onPress={next} />
+        <Button title="Continue" kind="primary" disabled={hasSpaces ? !spaces.length : !sourceProfiles.length} onPress={next} />
       </>
     );
   } else if (step === "unlock" && source) {
@@ -590,7 +590,7 @@ export function ImportWindow() {
     );
     footer = (
       <>
-        <Button title="Back" onPress={() => setStep(source.profiles.length > 1 || isArc ? "profiles" : "choose")} />
+        <Button title="Back" onPress={() => setStep(source.profiles.length > 1 || hasSpaces ? "profiles" : "choose")} />
         <View style={{ flex: 1 }} />
         <Button
           title="Skip Encrypted Data"
@@ -902,7 +902,7 @@ function BrowserRow({ browser, selected, onPress }: { browser: BrowserSource; se
     ? "Asks Dia while it's open"
     : browser.requiresExport
     ? "Direct or from an exported .zip"
-    : browser.family === "arc" && spaces
+    : spaces
       ? plural(spaces, "space")
       : browser.profiles.length > 1
         ? plural(browser.profiles.length, "profile")
