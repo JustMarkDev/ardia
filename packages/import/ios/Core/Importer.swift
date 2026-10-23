@@ -188,7 +188,16 @@ public final class Importer: @unchecked Sendable {
       }
       if kind != .history || !succeeded { observer.progress(ImportProgress(kind: kind, phase: .end, processed: count, total: count)) }
     }
+    try cancellation.check()
+    result.favicons = (try? FaviconReader.load(def.family == .firefox ? .firefox : .chromium, profile: dir,
+                                               pages: Self.tabPages(result))) ?? [:]
     return result
+  }
+
+  static func tabPages(_ result: ImportResult) -> [String] {
+    func links(_ nodes: [BookmarkNode]) -> [String] { nodes.flatMap { $0.url.map { [$0] } ?? links($0.children ?? []) } }
+    return (result.tabs + result.favorites).map(\.url)
+      + result.spaces.flatMap { links($0.pinned) + $0.tabs.map(\.url) }
   }
 
   static func count(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
